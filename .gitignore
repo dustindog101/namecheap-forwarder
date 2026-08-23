@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.session.json
+*.auth-state.json
+.session.json
+.auth-state.json
+.browser-ws.json
+.env
+.env.local
+.DS_Store
+coverage/

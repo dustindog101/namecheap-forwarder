@@ -1,0 +1,57 @@
+{
+  "name": "namecheap-forwarder",
+  "version": "1.0.0",
+  "description": "⚡ Unofficial Namecheap Email Forwarding API, TypeScript SDK & CLI — Bypass the $50 API paywall",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "namecheap-forwarder": "./bin/cli.mjs",
+    "ncf": "./bin/cli.mjs"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "LICENSE",
+    "docs"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "lint": "tsc --noEmit",
+    "prepare": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dustindog101/namecheap-forwarder.git"
+  },
+  "keywords": [
+    "namecheap",
+    "email-forwarding",
+    "unofficial-api",
+    "playwright",
+    "dns",
+    "aliases",
+    "automation",
+    "cli"
+  ],
+  "author": "dustindog101",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^12.0.0",
+    "playwright": "^1.42.1",
+    "playwright-core": "^1.42.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "typescript": "^5.4.3",
+    "vitest": "^1.4.0"
+  }
+}
