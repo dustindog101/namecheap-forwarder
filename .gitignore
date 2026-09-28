@@ -4,6 +4,8 @@ dist/
 *.auth-state.json
 .session.json
 .auth-state.json
+*.totp
+.totp
 .browser-ws.json
 .env
 .env.local

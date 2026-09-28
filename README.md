@@ -59,15 +59,15 @@
             ▼                                     ▼
    [ Session Manager ]                    [ CLI / SDK Core ]
   • Playwright Browser                   • NamecheapClient (Direct HTTP)
-  • 2FA / Device Code Prompt             • StealthNamecheapClient (Browser/CDP)
+  • TOTP autofill (or code prompt)       • StealthNamecheapClient (Browser/CDP)
   • Cookie & CSRF Capture                • Declarative Sync Engine
             │                                     │
             ▼                                     ▼
  ┌──────────────────────┐              ┌──────────────────────┐
  │   .session.json      │ ───────────► │ Namecheap Internal   │
  │   .auth-state.json   │              │ Dashboard REST APIs  │
- └──────────────────────┘              │ • /AddForwarder      │
-                                       │ • /DeleteForwarder   │
+ │   <domain>.totp      │              │ • /AddForwarder      │
+ └──────────────────────┘              │ • /DeleteForwarder   │
                                        │ • /GetDomainDetails  │
                                        └──────────────────────┘
 ```
@@ -94,9 +94,25 @@ ncf login -d yourdomain.com
 
 > **What happens:**
 > 1. A browser window opens to the Namecheap login page.
-> 2. Log in with your username and password.
-> 3. If Namecheap prompts for email/2FA verification, enter the code in your terminal.
+> 2. Your username and password are filled in from `NAMECHEAP_USERNAME` / `NAMECHEAP_PASSWORD`, or you type them in.
+> 3. If a TOTP authenticator seed is configured, the 2FA code is generated and submitted automatically. Otherwise you are prompted for it in the terminal.
 > 4. Your auth cookies and CSRF compliance tokens are saved securely to `./yourdomain.com.session.json`.
+
+### 2a. Fully Unattended Login (optional)
+
+If `NAMECHEAP_USERNAME`, `NAMECHEAP_PASSWORD` **and** a TOTP seed are all available,
+`ncf login` runs headless with no human in the loop — suitable for CI and cron:
+
+```bash
+# One-time: store the seed from your authenticator app (per-domain file, mode 0600)
+ncf 2fa:setup -d yourdomain.com
+
+# Confirm it matches your phone before trusting it
+ncf 2fa:code -d yourdomain.com
+
+# From now on this needs no interaction at all
+NAMECHEAP_USERNAME=me NAMECHEAP_PASSWORD=secret ncf login -d yourdomain.com
+```
 
 ### 3. Add an Email Forward
 
@@ -130,12 +146,42 @@ Both `namecheap-forwarder` and `ncf` are available as CLI aliases.
 ### `ncf login`
 Authenticate and save session cookies + CSRF tokens.
 ```bash
-# Interactive headed browser (recommended for first time & 2FA)
+# Interactive headed browser (recommended for first time)
 ncf login -d example.com
 
 # Headless with environment variables
 NAMECHEAP_USERNAME=myuser NAMECHEAP_PASSWORD=mypass ncf login -d example.com --headless
+
+# Headless + automatic TOTP (no interaction at all)
+ncf 2fa:setup -d example.com
+NAMECHEAP_USERNAME=myuser NAMECHEAP_PASSWORD=mypass ncf login -d example.com
+
+# Force a visible browser (e.g. for a 2FA method this tool does not automate)
+ncf login -d example.com --headed
 ```
+
+Headless is selected automatically when `NAMECHEAP_USERNAME`, `NAMECHEAP_PASSWORD` and a
+TOTP seed are all present. `--headless` forces it; `--headed` forces a visible window.
+
+### `ncf 2fa:setup` / `2fa:code` / `2fa:status` / `2fa:remove`
+Manage the TOTP seed used to clear Namecheap's 2FA gate automatically.
+```bash
+# Store the seed from your authenticator app (hidden input, saved mode 0600)
+ncf 2fa:setup -d example.com
+
+# Compare the generated code with your phone to prove the seed is right
+ncf 2fa:code -d example.com
+
+ncf 2fa:status -d example.com
+ncf 2fa:remove -d example.com
+```
+
+The seed can also come from the `NAMECHEAP_TOTP_SECRET` environment variable, which takes
+precedence over the per-domain file. Precedence order:
+
+1. `NAMECHEAP_TOTP_SECRET` — for CI / one-off automation
+2. `./<domain>.totp` — written by `ncf 2fa:setup`, permissions `0600`
+3. Neither — you are prompted for the code when the gate appears
 
 ### `ncf list`
 List all forwarding rules for a domain.
@@ -321,6 +367,7 @@ ncf sync forwards.json -d mydomain.com
 | `NAMECHEAP_NCCOMPLIANCE_TOKEN` | CSRF compliance header token | `undefined` |
 | `NAMECHEAP_USERNAME` | Namecheap username for auto-login | `undefined` |
 | `NAMECHEAP_PASSWORD` | Namecheap password for auto-login | `undefined` |
+| `NAMECHEAP_TOTP_SECRET` | Base32 authenticator seed; enables unattended 2FA | `undefined` |
 | `NAMECHEAP_BROWSER_WS` | WebSocket endpoint for remote CDP browser server | `undefined` |
 
 ---
@@ -333,6 +380,9 @@ ncf sync forwards.json -d mydomain.com
 | **`HTTP 403 Forbidden`** | Missing or incorrect CSRF token | Ensure `ncCompliance` / `_nccompliance` token is present in `.session.json`. Re-run `ncf login`. |
 | **`CLOUDFLARE_BLOCKED`** | Cloudflare bot protection triggered on direct HTTP calls | Use the `--stealth` flag or `StealthNamecheapClient` to route requests through a real browser. |
 | **Device Verification Prompt** | Namecheap flagged new login IP / device | Enter the verification code in your terminal when prompted by `ncf login`. |
+| **`Namecheap rejected the TOTP code twice`** | Stored seed or device clock is wrong | Run `ncf 2fa:code -d <domain>` and compare with your authenticator app. If they differ, re-seed with `ncf 2fa:setup`. Check your system clock is NTP-synced. |
+| **`Namecheap requires a TOTP code but no seed is configured`** | Headless login with no seed available | Run `ncf 2fa:setup -d <domain>`, or drop `--headless` to type the code. |
+| **`Headless login needs NAMECHEAP_USERNAME and NAMECHEAP_PASSWORD`** | Credentials not exported | Export both variables, or drop `--headless`. |
 | **Forward limit reached** | Exceeded Namecheap's 100 free forwarder limit | Delete obsolete forwarders or use a catch-all `*` forwarder. |
 
 ---
@@ -347,8 +397,9 @@ For a full reference on the underlying HTTP endpoints, headers, payloads, and re
 ## 🔒 Security & Best Practices
 
 1. **Never commit `.session.json` or `.auth-state.json`**: These files contain full authentication cookies to your Namecheap account. They are included in `.gitignore` by default.
-2. **Use Dedicated Machine/Secrets Manager**: If running in CI/CD or serverless environments, store `NAMECHEAP_SESSION_COOKIES` and `NAMECHEAP_NCCOMPLIANCE_TOKEN` as encrypted environment secrets.
-3. **Session Lifespan**: Namecheap web sessions typically last between **1 to 3 weeks** before needing a refresh.
+2. **Treat the TOTP seed like a password**: `<domain>.totp` and `NAMECHEAP_TOTP_SECRET` grant indefinite access to your account's 2FA-protected surface — anyone who reads the seed can mint valid codes forever, no password required. `ncf 2fa:setup` writes it with mode `0600` and it is git-ignored, but prefer a secrets manager for CI. Rotate the seed in Namecheap's 2FA settings if it is ever exposed.
+3. **Use Dedicated Machine/Secrets Manager**: If running in CI/CD or serverless environments, store `NAMECHEAP_SESSION_COOKIES` and `NAMECHEAP_NCCOMPLIANCE_TOKEN` as encrypted environment secrets.
+4. **Session Lifespan**: Namecheap web sessions typically last between **1 to 3 weeks** before needing a refresh.
 
 ---
 
