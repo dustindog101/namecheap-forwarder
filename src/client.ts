@@ -1,4 +1,4 @@
-import { resolveCsrfToken } from "./helpers.js";
+import { resolveCsrfToken, parseApiPayload } from "./helpers.js";
 import { parseForwardersResponse, isCloudflareBlock } from "./parse.js";
 import type { NamecheapSession, NamecheapForward, NamecheapClientLike } from "./types.js";
 
@@ -56,11 +56,7 @@ export class NamecheapClient implements NamecheapClientLike {
             throw new Error(`Namecheap API ${resp.status}: ${text.substring(0, 200)}`);
         }
 
-        try {
-            return JSON.parse(text);
-        } catch {
-            return { success: true };
-        }
+        return parseApiPayload(text);
     }
 
     async addForwarder(alias: string, forwardTo: string) {

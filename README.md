@@ -380,6 +380,8 @@ ncf sync forwards.json -d mydomain.com
 | **`HTTP 403 Forbidden`** | Missing or incorrect CSRF token | Ensure `ncCompliance` / `_nccompliance` token is present in `.session.json`. Re-run `ncf login`. |
 | **`CLOUDFLARE_BLOCKED`** | Cloudflare bot protection triggered on direct HTTP calls | Use the `--stealth` flag or `StealthNamecheapClient` to route requests through a real browser. |
 | **Device Verification Prompt** | Namecheap flagged new login IP / device | Enter the verification code in your terminal when prompted by `ncf login`. |
+| **`Namecheap API error: A required anti-forgery token …`** | The wrong CSRF token is cached in `.session.json` (Namecheap issues two) | Re-run `ncf login -d <domain>` to re-capture the session; `resolveCsrfToken` must pick the `_NcCompliance` GUID, not `x-ncpl-csrf`. |
+| **`Namecheap API error: This Email Forwarder already exists`** | `add` was run for an alias that already exists | Use `ncf delete` first, or pick a different alias. |
 | **`Namecheap rejected the TOTP code twice`** | Stored seed or device clock is wrong | Run `ncf 2fa:code -d <domain>` and compare with your authenticator app. If they differ, re-seed with `ncf 2fa:setup`. Check your system clock is NTP-synced. |
 | **`Namecheap requires a TOTP code but no seed is configured`** | Headless login with no seed available | Run `ncf 2fa:setup -d <domain>`, or drop `--headless` to type the code. |
 | **`Headless login needs NAMECHEAP_USERNAME and NAMECHEAP_PASSWORD`** | Credentials not exported | Export both variables, or drop `--headless`. |

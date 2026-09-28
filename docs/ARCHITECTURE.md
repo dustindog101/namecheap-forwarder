@@ -61,6 +61,30 @@
 - `totp-store.ts` resolves the seed in precedence order: `NAMECHEAP_TOTP_SECRET` → `./<domain>.totp` (mode `0600`) → none.
 - A seed plus `NAMECHEAP_USERNAME`/`NAMECHEAP_PASSWORD` is what allows `login` to run fully headless with no human in the loop.
 
+### 6. Two Different CSRF Tokens
+
+Namecheap issues two unrelated tokens, and conflating them breaks every write while
+reads keep working — a failure mode that looks like a permissions problem:
+
+| Token | Shape | Used by |
+| :--- | :--- | :--- |
+| `_NcCompliance` (cookie) | GUID, e.g. `0aba7a52-0d7f-…` | **Write endpoints.** Sent as the `ncCompliance` / `_nccompliance` headers. |
+| `x-ncpl-csrf` (cookie) | 32-char hex | Read paths. |
+
+Sending `x-ncpl-csrf` as `ncCompliance` makes `/Domains/AddForwarder` return
+**HTTP 200** with:
+
+```json
+{"Result":null,"Error":true,"Msg":"A required anti-forgery token was not supplied or was invalid"}
+```
+
+`resolveCsrfToken` therefore checks `_NcCompliance` first, and `SessionManager` takes the
+token from the cookie jar with the page meta tag only as a last resort.
+
+Note also that Namecheap reports application errors inside a `200`, so HTTP status alone
+is not a success signal. `parseApiPayload` inspects the `Error` flag, which is what stops a
+rejected write from being reported as "Successfully added forwarder".
+
 ---
 
 ## The 2FA Gate — `/twofa/totp/`

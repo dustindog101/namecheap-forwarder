@@ -1,6 +1,6 @@
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
 import type { StealthSession, NamecheapForward, NamecheapClientLike } from "./types.js";
-import { resolveCsrfToken, parseCookieString } from "./helpers.js";
+import { resolveCsrfToken, parseCookieString, parseApiPayload } from "./helpers.js";
 import { parseForwardersResponse } from "./parse.js";
 
 const BASE_URL = "https://ap.www.namecheap.com";
@@ -119,7 +119,9 @@ export class StealthNamecheapClient implements NamecheapClientLike {
             forwardTo,
         });
         if (status === 401 || status === 403) return null;
-        return { success: true };
+        // A 200 can still carry {"Error":true,...}; surface that instead of
+        // reporting a write as successful.
+        return parseApiPayload(text);
     }
 
     async deleteForwarder(alias: string, forwardTo: string) {
@@ -130,6 +132,6 @@ export class StealthNamecheapClient implements NamecheapClientLike {
             },
         });
         if (status === 401 || status === 403) return null;
-        return { success: true };
+        return parseApiPayload(text);
     }
 }

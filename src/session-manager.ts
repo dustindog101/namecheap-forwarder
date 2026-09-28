@@ -193,17 +193,16 @@ export class SessionManager {
             const cookies = await context.cookies();
             const cookieString = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
 
-            const csrfToken = await page.evaluate(() => {
+            // `_NcCompliance` is the anti-forgery token the write endpoints
+            // validate against, and it arrives as a cookie. The meta tag is only
+            // a last resort: it no longer exists on the domain panel, and the
+            // similar-looking `x-ncpl-csrf` cookie is a different token that
+            // every write rejects.
+            const metaToken = await page.evaluate(() => {
                 const meta = document.querySelector('meta[name="ncCompliance"], meta[name="_nccompliance"]');
-                if (meta) return meta.getAttribute("content");
-                for (const part of document.cookie.split(";")) {
-                    const trimmed = part.trim().toLowerCase();
-                    if (trimmed.startsWith("x-ncpl-csrf=") || trimmed.startsWith("_nccompliance=") || trimmed.startsWith("nc-csrf-token=")) {
-                        return part.split("=").slice(1).join("=").trim();
-                    }
-                }
-                return null;
+                return meta ? meta.getAttribute("content") : null;
             });
+            const csrfToken = resolveCsrfToken(null, cookieString) ?? metaToken ?? null;
 
             const capturedStorageState = await context.storageState();
             await fs.mkdir(this.sessionDir, { recursive: true });
@@ -215,7 +214,6 @@ export class SessionManager {
                 storageState: capturedStorageState,
                 savedAt: new Date().toISOString(),
             };
-
             await this.saveSession(domain, session);
             return session;
         } finally {
