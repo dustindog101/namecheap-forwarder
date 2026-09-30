@@ -20,3 +20,8 @@ describe('helpers.ts', () => {
         expect(parsed[0].value).toBe('xyz');
     });
 });
+
+it("validates domains and converts international domain names", () => {
+    expect(formatDomain("BÜCHER.example.")).toBe("xn--bcher-kva.example");
+    for (const domain of ["", "https://example.com", "example.com/path", "-bad.example", "foo..example", "localhost"]) expect(() => formatDomain(domain)).toThrow("Invalid domain");
+});

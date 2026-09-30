@@ -6,3 +6,6 @@ export * from "./stealth-client.js";
 export * from "./session-manager.js";
 export * from "./sync.js";
 export * from "./browser-server.js";
+export * from "./totp.js";
+export * from "./login.js";
+export * from "./domains.js";

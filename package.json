@@ -1,7 +1,7 @@
 {
   "name": "namecheap-forwarder",
   "version": "1.0.0",
-  "description": "⚡ Unofficial Namecheap Email Forwarding API, TypeScript SDK & CLI — Bypass the $50 API paywall",
+  "description": "Unofficial Namecheap email forwarding CLI & TypeScript SDK \u2014 manage forwards without the official API's $50 / 20-domain requirement",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -9,7 +9,8 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "bin": {
     "namecheap-forwarder": "./bin/cli.mjs",
@@ -17,15 +18,20 @@
   },
   "files": [
     "dist",
+    "!dist/**/*.test.*",
     "bin",
     "README.md",
     "LICENSE",
-    "docs"
+    "docs",
+    "CONTRIBUTING.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
     "lint": "tsc --noEmit",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run lint && npm test",
     "prepare": "npm run build"
   },
   "repository": {
@@ -35,23 +41,38 @@
   "keywords": [
     "namecheap",
     "email-forwarding",
+    "email-alias",
+    "forwarder",
     "unofficial-api",
     "playwright",
-    "dns",
-    "aliases",
-    "automation",
-    "cli"
+    "cli",
+    "sdk"
   ],
   "author": "dustindog101",
   "license": "MIT",
   "dependencies": {
     "commander": "^12.0.0",
-    "playwright": "^1.42.1",
-    "playwright-core": "^1.42.1"
+    "jpeg-js": "^0.4.4",
+    "jsqr": "^1.4.0",
+    "pngjs": "^7.0.0",
+    "tough-cookie": "^6.0.2"
   },
   "devDependencies": {
-    "@types/node": "^20.11.30",
+    "@types/node": "^22.20.4",
+    "@types/pngjs": "^6.0.5",
+    "playwright-core": "^1.62.1",
     "typescript": "^5.4.3",
-    "vitest": "^1.4.0"
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "sideEffects": false,
+  "bugs": {
+    "url": "https://github.com/dustindog101/namecheap-forwarder/issues"
+  },
+  "homepage": "https://github.com/dustindog101/namecheap-forwarder#readme",
+  "peerDependencies": {
+    "playwright-core": ">=1.62.0 <2"
   }
 }

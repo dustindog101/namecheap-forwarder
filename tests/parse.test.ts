@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { parseForwardersResponse, isCloudflareBlock, parseForwardersFromHtml } from "../src/parse.js";
+import { parseForwardersResponse, isCloudflareBlock, parseForwardersFromHtml, parseMutationResponse } from "../src/parse.js";
+import { SessionExpiredError } from "../src/types.js";
 
 describe("parse.ts", () => {
     it("detects Cloudflare blocks", () => {
@@ -55,4 +56,35 @@ describe("parse.ts", () => {
             { alias: "security", forwardTo: "sec@example.com" }
         ]);
     });
+});
+
+describe("parse.ts safety", () => {
+    it("throws SessionExpiredError for a login page instead of returning []", () => {
+        expect(() => parseForwardersResponse('<form action="/myaccount/login"><input name="LoginUserName"></form>')).toThrow(SessionExpiredError);
+    });
+
+    it("throws on unrecognized HTML instead of returning []", () => {
+        expect(() => parseForwardersResponse("<html><body>Something new</body></html>")).toThrow(/Unrecognized/);
+    });
+
+    it("returns [] for a domain with no forwards", () => {
+        expect(parseForwardersResponse(JSON.stringify({ Result: JSON.stringify({ RedirectEmailDetails: null }) }))).toEqual([]);
+    });
+
+    it("interprets mutation responses", () => {
+        expect(parseMutationResponse('{"Result":true}', 200).alreadyExisted).toBe(false);
+        expect(parseMutationResponse('{"Result":false,"Msg":"Forwarder already exists"}', 200).alreadyExisted).toBe(true);
+        expect(() => parseMutationResponse('{"Result":false,"Msg":"Invalid mailbox"}', 200)).toThrow(/Invalid mailbox/);
+        expect(() => parseMutationResponse("{}", 200)).toThrow(/rejected/);
+        expect(() => parseMutationResponse("", 401)).toThrow(SessionExpiredError);
+    });
+});
+
+it("rejects rejected and unknown JSON lists instead of interpreting them as empty domains", () => {
+    expect(() => parseForwardersResponse('{"Success":false,"Result":{},"Msg":"Denied"}')).toThrow("Denied");
+    expect(() => parseForwardersResponse('{"Result":{}}')).toThrow("missing forwarder list");
+});
+
+it("fails closed on malformed list entries instead of dropping them silently", () => {
+    expect(() => parseForwardersResponse('{"Result":{"Forwarders":[{"MailBox":"a"}]}}')).toThrow("Unrecognized forwarder entry");
 });

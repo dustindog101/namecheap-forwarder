@@ -26,12 +26,18 @@ ncCompliance: {CSRF_TOKEN}
 
 ### CSRF Token Locations
 The CSRF compliance token can be extracted from:
-1. `meta[name="ncCompliance"]` or `meta[name="_nccompliance"]` in the dashboard HTML.
-2. The `x-ncpl-csrf`, `_nccompliance`, or `nc-csrf-token` cookies in the session string.
+1. `input[name="ncCompliance"]` (hidden input) on the domain dashboard. This is the mutation token confirmed by live tests.
+2. `meta[name="ncCompliance"]` or `meta[name="_nccompliance"]` when present.
+
+The `x-ncpl-csrf` cookie belongs to the login flow and is not sufficient for dashboard mutations. A token refresh must also retain the `_NcCompliance` and authentication cookies returned in `Set-Cookie`. The HTTP client uses a cookie jar and refreshes once after an explicit anti-forgery rejection, then caches the token for subsequent requests.
 
 ---
 
 ## Endpoints
+
+### Account domain discovery
+
+`POST /api/v1/ncpl/gatewaydomainlist/getdomainsonly` with JSON `{"gridPageRequestViewModel":{"PageSize":2000,"Page":1}}` returns `{ "Data": [...], "TotalItems": number }`. Pages start at 1. Entries include `DomainName`, `ExpireDateTime`, `AutoRenew` and `IsBlocked`. Use the cookie `x-ncpl-csrf` as header `x-ncpl-rcsrf`, with account cookies, Origin and the `/domains/list` Referer. This token differs from the forwarding mutation token. The SDK collects pages, removes duplicates and refuses incomplete lists when pagination stalls.
 
 ### 1. List Forwarders
 
@@ -43,31 +49,17 @@ Retrieves the current domain status and list of configured email forwarders.
   * `domainName`: The root domain (e.g. `example.com`).
 
 * **Response Payload:**
-Returns a JSON payload with `Result` containing an array of active forwarders:
+`Result` is a JSON-encoded string containing `RedirectEmailDetails`:
 
 ```json
 {
-  "Success": true,
-  "Result": {
-    "DomainDetails": {
-      "Forwarders": [
-        {
-          "MailboxId": 1849201,
-          "MailboxName": "support",
-          "ForwardTo": "inbox@gmail.com"
-        },
-        {
-          "MailboxId": 1849202,
-          "MailboxName": "*",
-          "ForwardTo": "catchall@gmail.com"
-        }
-      ]
-    }
-  }
+  "Result": "{\"RedirectEmailDetails\":[{\"MailBox\":\"support\",\"ForwardTo\":\"inbox@gmail.com\",\"MailBoxId\":1849201}]}"
 }
 ```
 
-*Note:* In some response versions, `Result` is a JSON-encoded string that contains `RedirectEmailDetails` with fields `MailBox`, `ForwardTo`, and `MailBoxId`. In full server-side rendered pages, the list is embedded in HTML attributes (`data-mailbox-name="xxx"` and `data-forward-to="yyy"`). `namecheap-forwarder` transparently handles all three response formats.
+The parser also accepts `Result` as an object, `Forwarders` / `MailboxName` field names, a `window.nc_state` script, and HTML `data-mailbox-name` / `data-forward-to` attributes, in case the dashboard changes shape. Anything else raises an error. It never returns an empty list for an unrecognized page.
+
+* **Expired session:** responds `302` with `Location` pointing at `www.namecheap.com/myaccount/login`. Clients must not follow the redirect: the login page is an HTTP 200 that looks like a response with no forwards.
 
 ---
 
@@ -91,13 +83,7 @@ Creates a new email forwarding rule.
   * `mailBox`: Local alias prefix (e.g. `billing` for `billing@example.com` or `*` for catch-all).
   * `forwardTo`: Destination email address.
 
-* **Response:**
-```json
-{
-  "Success": true,
-  "Result": true
-}
-```
+* **Response:** `{ "Result": true }` on success. A rejected request is still **HTTP 200**, with `{ "Result": false, "Msg": "..." }`. A `Msg` containing "already exists" means the forward is already there.
 
 ---
 
@@ -127,18 +113,13 @@ Removes an existing email forwarding rule.
   * `DomainName`: Root domain name.
   * `Forwarders`: Array of rule objects to delete. `MailboxId` can be passed as `-1` to match by name and destination.
 
-* **Response:**
-```json
-{
-  "Success": true,
-  "Result": true
-}
-```
+* **Response:** same as AddForwarder. `Forwarders` is an array, so one request should be able to delete several forwards (`deleteForwarders()`). Batch deletion was confirmed by live add/delete/readback tests on a consenting account; existing unrelated forwards were preserved.
 
 ---
 
 ## Error Handling & Rate Limits
 
-- **HTTP 401 Unauthorized**: Session cookies have expired or been invalidated. Re-run `namecheap-forwarder login`.
+- **302 to login / HTTP 401**: The session has expired or been invalidated. Run `ncf login` again.
 - **HTTP 403 Forbidden / Cloudflare Challenge**: Cloudflare bot protection has challenged the direct HTTP request. Use `StealthNamecheapClient` to execute inside a Playwright browser context.
-- **Max Limit**: Namecheap allows up to **100 free forwarding rules** per domain.
+- **Rate limits**: Cloudflare returns 429 or a challenge page if requests come too fast. The clients serialize requests (250 ms apart by default) and retry with backoff.
+- **Max limit**: Namecheap caps forwards per domain (100 at the time of writing).
